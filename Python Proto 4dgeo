@@ -1,0 +1,149 @@
+import math
+import hashlib
+import random
+import time  # For timestamps
+
+class FlightToken:
+    """A transferable token embedding 4D flight metadata."""
+    def __init__(self, lat, lon, alt, timestamp):
+        self.position = {'lat': lat, 'lon': lon, 'alt': alt, 'time': timestamp}
+    
+    def __str__(self):
+        pos = self.position
+        return f"FlightToken(lat={pos['lat']:.4f}, lon={pos['lon']:.4f}, alt={pos['alt']}, time={pos['time']})"
+    
+    def to_dict(self):
+        return self.position
+
+class Block:
+    """A block in the 4D ledger containing flight transactions."""
+    def __init__(self, transactions, previous_hash, validator):
+        self.transactions = transactions  # List of FlightToken dicts
+        self.previous_hash = previous_hash
+        self.validator = validator
+        self.timestamp = time.time()
+        self.hash = self.calculate_hash()
+    
+    def calculate_hash(self):
+        block_string = f"{self.transactions}{self.previous_hash}{self.validator}{self.timestamp}"
+        return hashlib.sha256(block_string.encode()).hexdigest()
+
+class Blockchain:
+    """The PoS 4D Geo Flight Blockchain."""
+    def __init__(self):
+        self.chain = [self.create_genesis_block()]
+        self.stakes = {}  # User stakes: {user_id: stake_amount}
+        self.pending_transactions = []
+    
+    def create_genesis_block(self):
+        """Mint the genesis block."""
+        genesis_token = FlightToken(0, 0, 0, 0)  # Origin point
+        return Block([genesis_token.to_dict()], "0", "genesis")
+    
+    def add_transaction(self, token):
+        """Add a flight token transaction to pending."""
+        self.pending_transactions.append(token.to_dict())
+    
+    def select_validator(self):
+        """PoS: Select validator based on stake proportion."""
+        if not self.stakes:
+            return "default"
+        total_stake = sum(self.stakes.values())
+        if total_stake == 0:
+            return "default"
+        pick = random.uniform(0, total_stake)
+        current = 0
+        for user, stake in self.stakes.items():
+            current += stake
+            if current > pick:
+                return user
+        return list(self.stakes.keys())[-1]
+    
+    def mine_block(self):
+        """Mine a new block with PoS validation and proof-of-place."""
+        validator = self.select_validator()
+        # Mock proof-of-place: Assume GPS validates all for now
+        if self.pending_transactions:
+            new_block = Block(self.pending_transactions, self.chain[-1].hash, validator)
+            self.chain.append(new_block)
+            self.pending_transactions = []  # Clear pending
+            print(f"Block mined by {validator}. New hash: {new_block.hash[:16]}...")
+            return new_block
+        return None
+    
+    def stake_tokens(self, user, amount):
+        """Stake tokens for PoS."""
+        if user in self.stakes:
+            self.stakes[user] += amount
+        else:
+            self.stakes[user] = amount
+
+def arc_future_wave(current_token, velocity=500, heading=90, time_delta=3600, vtol_skew=0):
+    """
+    Predict future flight path using 'arc future wave'.
+    - Uses arctan for altitude-based wave curving.
+    - Asin for bearing sinusoidal adjustment.
+    - Basic spherical delta for position.
+    - VTOL skew: Adjusts vertical time (mocked as alt multiplier).
+    """
+    pos = current_token.position
+    lat, lon, alt, t = pos['lat'], pos['lon'], pos['alt'], pos['time']
+    
+    # Distance delta (km, assuming velocity in km/h)
+    delta_dist = velocity * (time_delta / 3600)
+    
+    # Earth radii approx (degrees per km)
+    dlat = delta_dist / 111.32
+    dlon = delta_dist / (111.32 * math.cos(math.radians(lat)))
+    
+    # Bearing radians
+    bearing = math.radians(heading)
+    
+    # Base prediction
+    new_lat = lat + dlat * math.cos(bearing)
+    new_lon = lon + dlon * math.sin(bearing)
+    
+    # Arc future wave adjustments
+    # Arctan wave for trajectory (altitude influences curve)
+    wave_curve = math.atan(alt / 1000) * (time_delta / 3600)  # Curve over time
+    new_lat += wave_curve * 0.01  # Small lat adjustment
+    
+    # Asin for future sinusoidal path (e.g., wind/arc effect)
+    arc_adjust = math.asin(math.sin(bearing)) * (delta_dist / 1000)
+    new_lon += arc_adjust * 0.005
+    
+    # Arccos for vertical skew correction (VTOL time dilation mock)
+    vtol_factor = math.acos(1 - (vtol_skew / alt)) if alt > 0 else 0  # Pseudo-correction
+    new_alt = alt + vtol_factor * time_delta / 3600 * 10  # Alt change
+    
+    new_time = t + time_delta * (1 + vtol_skew / 100)  # Time dilation mock
+    
+    return FlightToken(new_lat, new_lon, new_alt, new_time)
+
+# Example Usage: Simulate a flight
+if __name__ == "__main__":
+    bc = Blockchain()
+    
+    # Stake for PoS
+    bc.stake_tokens("pilot1", 100)
+    bc.stake_tokens("pilot2", 200)
+    
+    # Initial token (e.g., NYC takeoff)
+    start_token = FlightToken(40.7128, -74.0060, 1000, int(time.time()))
+    print("Starting token:", start_token)
+    
+    # Predict future path
+    future_token = arc_future_wave(start_token, velocity=500, heading=90, time_delta=3600, vtol_skew=0.1)
+    print("Predicted future token:", future_token)
+    
+    # Add to blockchain
+    bc.add_transaction(start_token)
+    bc.add_transaction(future_token)
+    
+    # Mine block
+    mined_block = bc.mine_block()
+    print(f"Ledger length: {len(bc.chain)} blocks")
+    
+    # Simulate transfer
+    transferred = future_token  # Simple transfer
+    print("Transferred token:", transferred)
