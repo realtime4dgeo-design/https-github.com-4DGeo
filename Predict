@@ -1,0 +1,5 @@
+import matplotlib.pyplot as plt
+# After prediction:
+plt.scatter([start_token.position['lon']], [start_token.position['lat']], c='blue', label='Start')
+plt.scatter([future_token.position['lon']], [future_token.position['lat']], c='red', label='Predicted')
+plt.legend(); plt.show()
