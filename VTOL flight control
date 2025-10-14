@@ -1,0 +1,79 @@
+import math
+import time
+
+def vtol_clock_correction(alt_change_rate, duration):
+    # Simplified GPS clock bias correction for vertical motion
+    # Based on relativistic/atmospheric skew mock: proportional to vertical velocity
+    # From GPS clock modeling: vertical errors ~ clock offsets
+    clock_bias = 0.000001 * alt_change_rate  # Microseconds per m/s, exaggerated for demo
+    return clock_bias * duration
+
+class FlightToken:
+    """A transferable token embedding 4D flight metadata."""
+    def __init__(self, lat, lon, alt, timestamp):
+        self.position = {'lat': lat, 'lon': lon, 'alt': alt, 'time': timestamp}
+    
+    def __str__(self):
+        pos = self.position
+        return f"FlightToken(lat={pos['lat']:.4f}, lon={pos['lon']:.4f}, alt={pos['alt']}, time={pos['time']})"
+    
+    def to_dict(self):
+        return self.position
+
+def arc_future_wave_vtol(current_token, velocity=0, heading=0, time_delta=60, vtol_skew=0.1, is_vtol_phase=True):
+    """
+    Predict future flight path with VTOL support.
+    - VTOL phase: Vertical focus with clock skew correction.
+    - Horizontal: Original trig-based logic.
+    """
+    pos = current_token.position
+    lat, lon, alt, t = pos['lat'], pos['lon'], pos['alt'], pos['time']
+    
+    # For VTOL: Focus on vertical climb/descent
+    alt_change_rate = velocity  # Vertical velocity (m/s)
+    
+    # Base time delta
+    new_time = t + time_delta
+    
+    if is_vtol_phase:
+        # Apply clock correction for vertical skew
+        correction = vtol_clock_correction(alt_change_rate, time_delta)
+        new_time += correction  # Adjust timestamp
+        
+        # Vertical adjustment with arccos skew (original mock)
+        vtol_factor = math.acos(1 - (vtol_skew / alt)) if alt > 0 else 0
+        new_alt = alt + alt_change_rate * (time_delta / 60) + vtol_factor * 10
+        
+        # Minimal horizontal for hover
+        new_lat = lat
+        new_lon = lon
+    else:
+        # Horizontal flight (trig adjustments)
+        delta_dist = velocity * (time_delta / 3600)  # km/h to km
+        dlat = delta_dist / 111.32
+        dlon = delta_dist / (111.32 * math.cos(math.radians(lat)))
+        bearing = math.radians(heading)
+        new_lat = lat + dlat * math.cos(bearing)
+        new_lon = lon + dlon * math.sin(bearing)
+        new_alt = alt
+        new_time = t + time_delta * (1 + vtol_skew / 100)
+    
+    return FlightToken(new_lat, new_lon, new_alt, new_time)
+
+# Example: Simulate VTOL cycle (add to blockchain as transactions)
+if __name__ == "__main__":
+    start_time = int(time.time())
+    start_token = FlightToken(40.7128, -74.0060, 0, start_time)  # NYC ground
+    print("Start (Ground):", start_token)
+    
+    # VTOL climb (10 m/s up, 60s)
+    climb_token = arc_future_wave_vtol(start_token, velocity=10, time_delta=60, vtol_skew=0.1, is_vtol_phase=True)
+    print("After Climb:", climb_token)
+    
+    # Forward flight (500 km/h east, 1hr)
+    forward_token = arc_future_wave_vtol(climb_token, velocity=500, heading=90, time_delta=3600, vtol_skew=0.1, is_vtol_phase=False)
+    print("After Forward:", forward_token)
+    
+    # VTOL landing (-10 m/s down, 60s)
+    land_token = arc_future_wave_vtol(forward_token, velocity=-10, time_delta=60, vtol_skew=0.1, is_vtol_phase=True)
+    print("After Landing:", land_token)
