@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# 4D Geo Flight Blockchain Runner
+# This script clones, builds, and runs the project in one go.
+# Requires: Git, CMake, Make (and C++ compiler like g++)
+
+set -e  # Exit on any error
+
+REPO_URL="https://github.com/realtime4dgeo-design/4d-geo-flight-blockchain.git"
+PROJECT_DIR="4d-geo-flight-blockchain"
+
+echo "Cloning the repository..."
+if [ -d "$PROJECT_DIR" ]; then
+    echo "Repository already exists. Pulling latest changes..."
+    cd "$PROJECT_DIR"
+    git pull origin main
+    cd ..
+else
+    git clone "$REPO_URL" "$PROJECT_DIR"
+fi
+
+echo "Building the project..."
+cd "$PROJECT_DIR"
+mkdir -p build
+cd build
+cmake ..
+make -j$(nproc)  # Use all CPU cores for faster build
+
+echo "Running the main program..."
+./src/main  # Mints genesis block and starts the node
+
+echo "Build and run complete! Press Ctrl+C to stop the node if needed."
+# Optional: To test, uncomment the next line
+# cd .. && make test
